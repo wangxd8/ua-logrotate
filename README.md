@@ -27,10 +27,10 @@ ua全称user-agent，用于记录用户请求的ua日志
 └───────────────────────── second (0 - 59, OPTIONAL)
 ```
 
-### 如何使用ua-logrotate ?
+### 如何使用ua-logrotate
 
  ```js
-    var ua = require('./index')
+    import ua from 'ua-logrotate'
     ua({
         'app':'test',
         'log':ctx.request.header

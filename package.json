@@ -1,6 +1,6 @@
 {
   "name": "ua-logrotate",
-  "version": "1.0.0",
+  "version": "1.0.3",
   "description": "",
   "main": "index.js",
   "homepage": "https://github.com/wangxd8/ua-logrotate.git",

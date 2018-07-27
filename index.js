@@ -13,20 +13,20 @@ var schedule = require('node-schedule')
 var moment = require('moment')
 var fs = require('fs')
 
-var ua_logs_path='/Users/wxd/test/ua-logrotate/' //'/data/logs/'
+var ua_logs_path='/data/logs/'
 
 var ua_log = {}
 ua_log.init = function(param){
-    let that = this
+    var that = this
     this.param = param
     this.max_size= this.get_limit_size(), // 默认10M
     this.file_num = 3
     this.dateFormat = 'YYYY-MM-DD_HH-mm-ss'
     this.workerInterval = isNaN(parseInt(param['workerInterval']))? 30*1000:parseInt(param['workerInterval']) * 1000; // 默认30s
     this.rotateInterval = param['rotateInterval']||'0 0 * * *' // 默认每天凌晨
-    this.field = param['field']?param['field']:'' // 需要保存的字段
-    this.UA_LOG_PATH = param['log_path']?param['log_path']:UA_LOG_PATH
-    var out_path = param['app']?UA_LOG_PATH+param['app']+'/out.log':UA_LOG_PATH+'/out.log'
+    //this.field = param['field']?param['field']:'' // 需要保存的字段 暂时默认保存header信息
+    ua_logs_path = param['log_path']?param['log_path']:ua_logs_path
+    var out_path = param['app']?ua_logs_path+param['app']+'/out.log':ua_logs_path+'/out.log'
     setInterval(function(){
         that.files_size(out_path)
     },that.workerInterval);
@@ -39,16 +39,24 @@ ua_log.init = function(param){
     }
 }
 ua_log.create_outlog = function(param){
-    var log = param['log']
-    let ua = this.destory_ua(log)
-    if(this.field&&ua){
-        var field = this.field.split(',')
-        for(let i=0;i<field.length;i++){
-            ua[field[i]]
-        }
+    var user_agent = param['log']['user-agent']||''
+    var ua = ''
+    if(user_agent){
+      ua = this.destory_ua(user_agent)
     }
+    if(ua){
+        ua = Object.assign(ua,param['log'])
+    }else{
+        ua = param['log']
+    }
+    // if(this.field&&ua){
+    //     var field = this.field.split(',')
+    //     for(var i=0;i<field.length;i++){
+    //         ua[field[i]]
+    //     }
+    // }
     var write =function(){
-        fs.writeFile(UA_LOG_PATH+param['app']+'/out.log',JSON.stringify(ua),'utf8',function(err){
+        fs.writeFile(ua_logs_path+param['app']+'/out.log',JSON.stringify(ua),'utf8',function(err){
             if(err) {
                 console.log(err);
             }
@@ -56,13 +64,15 @@ ua_log.create_outlog = function(param){
         })
     } 
     // 判断目录是否存在
-     fs.stat(UA_LOG_PATH+param['app']+'/out.log',function(err,stat){
+     fs.stat(ua_logs_path+param['app']+'/out.log',function(err,stat){
         if(stat&&stat.isFile()){ // 文件存在
             write()
         }else{ // 文件不存在
-            fs.mkdir(UA_LOG_PATH+param['app'], function (err) {
-                fs.open(UA_LOG_PATH+param['app']+'/out.log','a+',function(e){
-                    if(e) throw e;
+            fs.mkdir(ua_logs_path+param['app'], function (err) {
+                fs.open(ua_logs_path+param['app']+'/out.log','a+',function(e){
+                    if(e){ 
+                        throw e;
+                    }
                     write()
                 })
             })
@@ -70,9 +80,21 @@ ua_log.create_outlog = function(param){
     })
     
 }
+ua_log.mkdirs = function (dirname, callback) {  
+    fs.exists(dirname, function (exists) {  
+        if (exists) {  
+            callback();  
+        } else {  
+            //console.log(path.dirname(dirname));  
+            mkdirs(path.dirname(dirname), function () {  
+                fs.mkdir(dirname, callback);  
+            });  
+        }  
+    });  
+} 
 // 写文件
 ua_log.proceed = function(file){
-    let that = this
+    var that = this
     var final_time = moment().format(this.dateFormat)
     var final_name = file.substr(0, file.length - 4) + '__' + final_time + '.log';
     var readStream = fs.createReadStream(file);
@@ -95,7 +117,7 @@ ua_log.proceed = function(file){
 // 判断文件大小
 ua_log.files_size = function(file,force){
     if (!fs.existsSync(file)) return;
-    let that = this;
+    var that = this;
     fs.stat(file, function (err, data) {
         if (err) return console.error(err);
         if (data.size > 0 && (data.size >= that.max_size)||force) { 
@@ -105,7 +127,7 @@ ua_log.files_size = function(file,force){
 }
 // 获取设置文件大小
 ua_log.get_limit_size = function() {
-    let max_size = this.param['max_size']||10000
+    var max_size = this.param['max_size']||10000
     if (typeof(max_size) !== 'string'){
         max_size = max_size + "";
     }else if (max_size.slice(-1) === 'G'){
@@ -120,7 +142,7 @@ ua_log.get_limit_size = function() {
 // 删除历史文件
 ua_log.delete_old = function(file){
   if (file === "/dev/null") return;
-  let that = this;
+  var that = this;
   var fileBaseName = file.substr(0, file.length - 4).split('/').pop()+'__';
   var dirName = path.dirname(file);
   fs.readdir(dirName, function(err, files) {
@@ -144,17 +166,17 @@ ua_log.delete_old = function(file){
 }
 //处理ua数据
 ua_log.destory_ua = function(data){
-    let ua = data['user-agent']||''
-    return ua?this.formatUa(ua):''
+    return data?this.formatUa(data):''
 }
 ua_log.formatUa = function (ua) {
-    let reg = /^(Mozilla\/5\.0) \((.+)\) .*(ios|android|windowsphone|windows|mac|macos)\/([^ ]+) \(([^ ]+)\)(.*)$/i
-    let exe = reg.exec(ua)
-    let phoneInfo = exe[2] ? exe[2].split('; ') : []
-    let sysType = this.getSysType(exe[3].toUpperCase())
-    let sysVersion = sysType === '14' ? phoneInfo[2] : phoneInfo[1]
-    let phone = sysType === '14' ? phoneInfo[3] : PHONE
-    let res = {
+    ua = 'Mozilla/5.0 (Linux; Android 8.0.0; ALP-AL00 Build/HUAWEIALP-AL00; wv) AppleWebKit/537.36 (KHTML, like Gecko) Version/4.0 Chrome/63.0.3239.111 Mobile Safari/537.36 Android/060506_6.5.6_0291_0801 (Asia/Shanghai) app/1 ibb/1.0.0'
+    var reg = /^(Mozilla\/5\.0) \((.+)\) .*(ios|android|windowsphone|windows|mac|macos)\/([^ ]+) \(([^ ]+)\)(.*)$/i
+    var exe = reg.exec(ua)
+    var phoneInfo = exe[2] ? exe[2].split('; ') : []
+    var sysType = this.getSysType(exe[3].toUpperCase())
+    var sysVersion = sysType === '14' ? phoneInfo[2] : phoneInfo[1]
+    var phone = sysType === '14' ? phoneInfo[3] : PHONE
+    var res = {
       phone,
       software: exe[1],
       sysName: exe[3],
@@ -165,7 +187,7 @@ ua_log.formatUa = function (ua) {
   }
   
   ua_log.getSysType = function (type) {
-    let res = '14'
+    var res = '14'
     switch (type) {
       case 'WINDOWS':
         res = '09'
